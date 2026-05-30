@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ctrl. Stats</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --font: 'League Spartan', sans-serif;
+  }
+
+  html, body {
+    background: transparent;
+    font-family: var(--font);
+    height: 100%;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 8px;
+    height: 100%;
+  }
+
+  .card {
+    background: #3b3b3b;
+    border-radius: 10px;
+    padding: 20px 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.6);
+    margin-bottom: 10px;
+  }
+
+  .value {
+    font-size: 52px;
+    font-weight: 300;
+    letter-spacing: -0.04em;
+    color: #ffffff;
+    line-height: 1;
+    transition: all 0.3s;
+  }
+
+  .value.loading { color: rgba(255,255,255,0.2); }
+
+  .sub {
+    font-size: 11px;
+    color: rgba(255,255,255,0.35);
+    margin-top: 8px;
+  }
+
+  .footer {
+    text-align: center;
+    padding: 4px 8px 6px;
+    font-size: 10px;
+    color: #bbb;
+    letter-spacing: 0.06em;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .refresh-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #bbb;
+    font-size: 10px;
+    font-family: var(--font);
+    letter-spacing: 0.06em;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px;
+  }
+
+  .refresh-btn:hover { color: #3b3b3b; }
+  .refresh-btn.spinning svg { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .wrap { display: flex; flex-direction: column; min-height: 100vh; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="grid">
+    <div class="card">
+      <div class="label">Total deliverables</div>
+      <div class="value loading" id="statTotal">—</div>
+      <div class="sub" id="statSub">loading...</div>
+    </div>
+    <div class="card">
+      <div class="label">In progress</div>
+      <div class="value loading" id="statProgress">—</div>
+      <div class="sub">filming · editing · review</div>
+    </div>
+    <div class="card">
+      <div class="label">Completed</div>
+      <div class="value loading" id="statDone">—</div>
+      <div class="sub">uploaded · finalised</div>
+    </div>
+  </div>
+  <div class="footer">
+    <span id="lastUpdated">Fetching data...</span>
+    <button class="refresh-btn" id="refreshBtn" onclick="loadAll()">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+      Refresh
+    </button>
+  </div>
+</div>
+
+<script>
+const IN_PROGRESS = ['FILMED','UPLOADED TO GD','STARTED PROJECT','STAGE 1: ROUGH CUTS','STAGE 2: B-ROLL','STAGE 3: FONT LAYERING','CTRL. REVIEW'];
+const DONE = ['UPLOADED','Revision Completed','Deliverable Finalised','REVISION COMPLETED','DELIVERABLE FINALISED'];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+const CLIENTS = [
+  { name: 'ctrl.', dbId: '2e5c759b-a92b-8159-8e92-f13de83bf36a' },
+  { name: 'Mr Summit Bali', dbId: '32dc759b-a92b-817d-a1c4-ddce904ff4ee' },
+  { name: 'Mr Summit Melbourne', dbId: '2dfc759b-a92b-81fd-a5f8-ce920bcfb408' },
+  { name: 'John Sugden Swim School', dbId: '2a9c759b-a92b-81e1-8284-c4193c5431d1' },
+  { name: 'Deepmock', dbId: '330c759b-a92b-81dd-8deb-c5e89094db03' },
+  { name: "Emma's Baby Swim", dbId: '2a9c759b-a92b-8104-aa7d-ebe5f3c968ec' },
+  { name: 'The Co-Learning Hub', dbId: '2a9c759b-a92b-81df-a072-e9a257ee1b9f' },
+  { name: 'Tripply', dbId: '33ec759b-a92b-8121-9d6a-db52569665c8' },
+  { name: 'Full Speed Performance', dbId: '2a9c759b-a92b-81b3-b7e3-f7c4227dbd9c' },
+  { name: 'Insighto Buyers Agency', dbId: '2a9c759b-a92b-8198-a359-d27ec4a5a093' },
+  { name: 'CONDITN', dbId: '329c759b-a92b-80fd-b7fc-c72534da9182' },
+];
+
+const currentMonth = MONTHS[new Date().getMonth()];
+
+async function queryDb(dbId) {
+  const res = await fetch('/api/notion', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ databaseId: dbId })
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const d = await res.json();
+  return d.results || [];
+}
+
+function getStatus(page) {
+  const s = page.properties?.Status;
+  if (!s) return null;
+  if (s.type === 'status') return s.status?.name || null;
+  if (s.type === 'select') return s.select?.name || null;
+  return null;
+}
+
+function getMonth(page) {
+  const props = page.properties || {};
+  for (const key of Object.keys(props)) {
+    const p = props[key];
+    if (p.type === 'select' && MONTHS.includes(p.select?.name)) return p.select.name;
+  }
+  return null;
+}
+
+async function loadAll() {
+  const btn = document.getElementById('refreshBtn');
+  btn.classList.add('spinning');
+  ['statTotal','statProgress','statDone'].forEach(id => {
+    document.getElementById(id).textContent = '—';
+    document.getElementById(id).classList.add('loading');
+  });
+
+  const results = await Promise.allSettled(CLIENTS.map(c => queryDb(c.dbId)));
+  let total = 0, inProg = 0, done = 0;
+
+  results.forEach(r => {
+    if (r.status !== 'fulfilled') return;
+    const filtered = r.value.filter(p => getMonth(p) === currentMonth);
+    total += filtered.length;
+    inProg += filtered.filter(p => IN_PROGRESS.includes(getStatus(p))).length;
+    done += filtered.filter(p => DONE.includes(getStatus(p))).length;
+  });
+
+  ['statTotal','statProgress','statDone'].forEach(id => document.getElementById(id).classList.remove('loading'));
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statProgress').textContent = inProg;
+  document.getElementById('statDone').textContent = done;
+  document.getElementById('statSub').textContent = `${currentMonth} · all clients`;
+
+  const now = new Date();
+  document.getElementById('lastUpdated').textContent =
+    `Updated ${now.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}`;
+
+  btn.classList.remove('spinning');
+}
+
+loadAll();
+</script>
+</body>
+</html>
